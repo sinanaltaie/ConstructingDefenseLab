@@ -119,7 +119,12 @@ ludus:
     ip_last_octet: 15
     ram_gb: 8
     cpus: 4
-    linux: true
+    linux:
+      packages:
+        - ca-certificates
+        - curl
+        - git
+        - make
 
   - vm_name: "{{ range_id }}-linuxv"
     hostname: "{{ range_id }}-linuxv"
