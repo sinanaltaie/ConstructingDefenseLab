@@ -23,8 +23,8 @@
   <!-- This now also determines the file names of the files preserved (String) -->
   <CheckRevocation>False</CheckRevocation>
   <!-- Setting this to true might impact performance -->
-  <DnsLookup>False</DnsLookup>
-  <!-- Disables lookup behavior, default is True (Boolean) -->
+  <DnsLookup>True</DnsLookup>
+  <!-- Enables DNS query logging (Event ID 22) for C2 domain detection -->
   <ArchiveDirectory>Sysmon</ArchiveDirectory>
   <!-- Sets the name of the directory in the C:\ root where preserved files will be saved (String)-->
   <EventFiltering>

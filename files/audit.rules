@@ -748,5 +748,5 @@
 -a always,exit -F arch=b32 -S all -k 32bit_api
 
 # Make The Configuration Immutable --------------------------------------------
-
-##-e 2
+# Prevents runtime modification of audit rules — requires reboot to change
+-e 2

@@ -1,0 +1,8 @@
+cs_falcon_cid: "{{ lookup('env', 'CS_CID') }}"
+cs_falcon_api_client_id: "{{ lookup('env', 'CS_API_CLIENT_ID') }}"
+cs_falcon_api_client_secret: "{{ lookup('env', 'CS_API_CLIENT_SECRET') }}"
+# Override for US-2, EU-1, or GovCloud:
+#   US-2:     https://api.us-2.crowdstrike.com
+#   EU-1:     https://api.eu-1.crowdstrike.com
+#   US-GOV-1: https://api.laggar.gcw.crowdstrike.com
+cs_falcon_api_base_url: "https://api.us-2.crowdstrike.com"

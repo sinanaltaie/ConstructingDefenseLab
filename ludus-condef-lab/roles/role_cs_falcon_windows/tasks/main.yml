@@ -1,0 +1,96 @@
+---
+- name: Validate required CrowdStrike variables
+  assert:
+    that:
+      - cs_falcon_cid | length > 0
+      - cs_falcon_api_client_id | length > 0
+      - cs_falcon_api_client_secret | length > 0
+    fail_msg: >
+      CS_CID, CS_API_CLIENT_ID, and CS_API_CLIENT_SECRET
+      must be exported as environment variables before running ludus range deploy.
+
+- name: Get CrowdStrike OAuth2 token
+  uri:
+    url: "{{ cs_falcon_api_base_url }}/oauth2/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      client_id: "{{ cs_falcon_api_client_id }}"
+      client_secret: "{{ cs_falcon_api_client_secret }}"
+    status_code: 201
+  register: cs_oauth_response
+  delegate_to: localhost
+  run_once: true
+  no_log: true
+
+- name: Get Windows Falcon Sensor installer metadata
+  uri:
+    url: "{{ cs_falcon_api_base_url }}/sensors/combined/installers/v1?platform=windows&limit=1"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ cs_oauth_response.json.access_token }}"
+    status_code: 200
+  register: cs_installer_meta
+  delegate_to: localhost
+  run_once: true
+
+- name: Download Windows Falcon Sensor to Ansible controller
+  shell: >
+    curl -s -L -o /tmp/WindowsSensor.exe
+    -H "Authorization: Bearer {{ cs_oauth_response.json.access_token }}"
+    "{{ cs_falcon_api_base_url }}/sensors/entities/download/v2?id={{ cs_installer_meta.json.resources[0].sha256 }}"
+  args:
+    creates: /tmp/WindowsSensor.exe
+  delegate_to: localhost
+  run_once: true
+  no_log: true
+
+- name: Check if Falcon Sensor service already exists
+  win_service:
+    name: CSFalconService
+  register: falcon_svc_check
+  failed_when: false
+
+- name: Copy Falcon Sensor installer to target
+  win_copy:
+    src: /tmp/WindowsSensor.exe
+    dest: 'C:\Windows\Temp\WindowsSensor.exe'
+  when: falcon_svc_check.state is not defined
+
+- name: Install Falcon Sensor
+  win_shell: |
+    $result = Start-Process `
+      -FilePath 'C:\Windows\Temp\WindowsSensor.exe' `
+      -ArgumentList '/install', '/quiet', '/norestart', `
+        "CID={{ cs_falcon_cid }}" `
+      -Wait -PassThru
+    exit $result.ExitCode
+  when: falcon_svc_check.state is not defined
+  no_log: true
+  register: falcon_install_result
+
+- name: Wait for Falcon Sensor service to start
+  win_service:
+    name: CSFalconService
+  register: falcon_svc_status
+  retries: 12
+  delay: 10
+  until: falcon_svc_status.state is defined and falcon_svc_status.state == "running"
+
+- name: Verify Falcon Sensor is running and display version
+  win_shell: |
+    $svc = Get-Service -Name CSFalconService -ErrorAction SilentlyContinue
+    if ($svc -and $svc.Status -eq 'Running') {
+      $exe = Get-Item 'C:\Program Files\CrowdStrike\CSFalconService.exe' -ErrorAction SilentlyContinue
+      $ver = if ($exe) { $exe.VersionInfo.ProductVersion } else { 'unknown' }
+      Write-Output "Falcon Sensor running — version: $ver"
+      exit 0
+    } else {
+      Write-Output "Falcon Sensor is NOT running"
+      exit 1
+    }
+  register: falcon_verify
+
+- name: Display Falcon Sensor status
+  debug:
+    msg: "{{ falcon_verify.stdout_lines }}"

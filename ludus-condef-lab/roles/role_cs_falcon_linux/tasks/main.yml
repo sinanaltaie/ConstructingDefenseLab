@@ -1,0 +1,96 @@
+---
+- name: Validate required CrowdStrike variables
+  assert:
+    that:
+      - cs_falcon_cid | length > 0
+      - cs_falcon_api_client_id | length > 0
+      - cs_falcon_api_client_secret | length > 0
+    fail_msg: >
+      CS_CID, CS_API_CLIENT_ID, and CS_API_CLIENT_SECRET
+      must be exported as environment variables before running ludus range deploy.
+
+- name: Get CrowdStrike OAuth2 token
+  uri:
+    url: "{{ cs_falcon_api_base_url }}/oauth2/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      client_id: "{{ cs_falcon_api_client_id }}"
+      client_secret: "{{ cs_falcon_api_client_secret }}"
+    status_code: 201
+  register: cs_oauth_response
+  delegate_to: localhost
+  run_once: true
+  no_log: true
+
+- name: Get Linux Falcon Sensor installer metadata
+  uri:
+    url: >-
+      {{ cs_falcon_api_base_url }}/sensors/combined/installers/v1
+      ?platform=linux
+      &os={{ cs_falcon_linux_os | urlencode }}
+      &os_version={{ cs_falcon_linux_os_version | urlencode }}
+      &limit=1
+    method: GET
+    headers:
+      Authorization: "Bearer {{ cs_oauth_response.json.access_token }}"
+    status_code: 200
+  register: cs_installer_meta
+  delegate_to: localhost
+  run_once: true
+
+- name: Download Linux Falcon Sensor to Ansible controller
+  shell: >
+    curl -s -L -o /tmp/falcon-sensor.deb
+    -H "Authorization: Bearer {{ cs_oauth_response.json.access_token }}"
+    "{{ cs_falcon_api_base_url }}/sensors/entities/download/v2?id={{ cs_installer_meta.json.resources[0].sha256 }}"
+  args:
+    creates: /tmp/falcon-sensor.deb
+  delegate_to: localhost
+  run_once: true
+  no_log: true
+
+- name: Check if Falcon Sensor is already installed
+  stat:
+    path: /opt/CrowdStrike/falconctl
+  register: falcon_installed
+
+- name: Copy Falcon Sensor package to target
+  copy:
+    src: /tmp/falcon-sensor.deb
+    dest: /tmp/falcon-sensor.deb
+    mode: '0644'
+  when: not falcon_installed.stat.exists
+
+- name: Install Falcon Sensor package
+  apt:
+    deb: /tmp/falcon-sensor.deb
+    state: present
+  become: true
+  when: not falcon_installed.stat.exists
+
+- name: Provision Falcon Sensor with CID
+  command: /opt/CrowdStrike/falconctl -s --cid="{{ cs_falcon_cid }}"
+  become: true
+  when: not falcon_installed.stat.exists
+  no_log: true
+
+- name: Start and enable Falcon Sensor service
+  systemd:
+    name: falcon-sensor
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true
+
+- name: Wait for Falcon Sensor to provision and obtain Agent ID
+  command: /opt/CrowdStrike/falconctl -g --aid
+  become: true
+  register: falcon_aid
+  retries: 12
+  delay: 10
+  until: falcon_aid.rc == 0 and falcon_aid.stdout | length > 0
+
+- name: Display Falcon Sensor Agent ID
+  debug:
+    msg: "Falcon Sensor provisioned — AID: {{ falcon_aid.stdout }}"

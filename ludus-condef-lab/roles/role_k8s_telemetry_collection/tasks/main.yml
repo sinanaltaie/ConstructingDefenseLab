@@ -28,7 +28,7 @@
   set_fact:
     splunk_server_ip: "{{ ludus_k8s_splunk_server_ip }}"
     splunk_hec_token: "{{ ludus_k8s_splunk_hec_token }}"
-    splunk_endpoint: "http://{{ ludus_k8s_splunk_server_ip }}:8088/services/collector"
+    splunk_endpoint: "https://{{ ludus_k8s_splunk_server_ip }}:8088/services/collector"
 
 - name: Test Splunk connectivity
   uri:
@@ -44,6 +44,7 @@
       sourcetype: "ludus:test"
       index: "{{ k8s_splunk_index }}"
     status_code: 200
+    validate_certs: false
   register: splunk_test
   retries: 5
   delay: 30
@@ -183,6 +184,7 @@
     --set="clusterName={{ k8s_cluster_name }}"
     --set="logsEngine=otel"
     --set="splunkPlatform.logsEnabled=true"
+    --set="splunkPlatform.insecureSkipVerify=true"
     splunk-otel-collector-chart/splunk-otel-collector
   become: true
   become_user: debian

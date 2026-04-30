@@ -241,7 +241,8 @@
           Write-Host "Testing HEC endpoint..."
           Start-Sleep -Seconds 10
           try {
-              $testUrl = "http://localhost:8088/services/collector"
+              $protocol = if ($DisableSSL) { "http" } else { "https" }
+              $testUrl = "${protocol}://localhost:8088/services/collector"
               $testHeaders = @{
                   "Authorization" = "Splunk $ExpectedToken"
                   "Content-Type" = "application/json"
@@ -251,7 +252,11 @@
                   sourcetype = "splunk:config"
                   index = $IndexName
               } | ConvertTo-Json
-              
+
+              # Bypass self-signed cert validation for lab Splunk instance
+              if (-not $DisableSSL) {
+                  [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+              }
               $testResult = Invoke-RestMethod -Uri $testUrl -Headers $testHeaders -Method POST -Body $testBody -TimeoutSec 15
               Write-Host "HEC endpoint test SUCCESSFUL!"
           } catch {
@@ -270,7 +275,8 @@
       Write-Host "Index: $IndexName"
       Write-Host "HEC Port: 8088"
       Write-Host "SSL Disabled: $DisableSSL"
-      Write-Host "Endpoint: http://localhost:8088/services/collector"
+      $protocol = if ($DisableSSL) { "http" } else { "https" }
+      Write-Host "Endpoint: ${protocol}://localhost:8088/services/collector"
       Write-Host ""
       Write-Host "Configuration Files Created:"
       Write-Host "- $hecConfigDir\inputs.conf"
@@ -282,7 +288,8 @@
           Write-Host "HEC should be enabled after Splunk restart"
           Write-Host ""
           Write-Host "Test command:"
-          Write-Host "curl -k http://localhost:8088/services/collector -H 'Authorization: Splunk $ExpectedToken' -d '{\"event\":\"test\",\"index\":\"$IndexName\"}'"
+          $protocol = if ($DisableSSL) { "http" } else { "https" }
+          Write-Host "curl -k ${protocol}://localhost:8088/services/collector -H 'Authorization: Splunk $ExpectedToken' -d '{\"event\":\"test\",\"index\":\"$IndexName\"}'"
       } else {
           Write-Host "PARTIAL SUCCESS: Some configuration steps may have failed"
           Write-Host "Check the configuration files manually"

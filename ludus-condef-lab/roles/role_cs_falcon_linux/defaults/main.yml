@@ -1,0 +1,6 @@
+cs_falcon_cid: "{{ lookup('env', 'CS_CID') }}"
+cs_falcon_api_client_id: "{{ lookup('env', 'CS_API_CLIENT_ID') }}"
+cs_falcon_api_client_secret: "{{ lookup('env', 'CS_API_CLIENT_SECRET') }}"
+cs_falcon_api_base_url: "https://api.us-2.crowdstrike.com"
+cs_falcon_linux_os: "Debian"
+cs_falcon_linux_os_version: "12"
