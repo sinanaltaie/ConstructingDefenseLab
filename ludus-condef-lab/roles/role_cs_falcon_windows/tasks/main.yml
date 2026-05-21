@@ -5,9 +5,12 @@
       - cs_falcon_cid | length > 0
       - cs_falcon_api_client_id | length > 0
       - cs_falcon_api_client_secret | length > 0
+      - cs_falcon_cid is match("^[A-Fa-f0-9]{32}-[A-Fa-f0-9]{2}$")
     fail_msg: >
-      CS_CID, CS_API_CLIENT_ID, and CS_API_CLIENT_SECRET
-      must be exported as environment variables before running ludus range deploy.
+      CS_CID, CS_API_CLIENT_ID, and CS_API_CLIENT_SECRET must be exported as
+      environment variables before running ludus range deploy. CS_CID must be in
+      the format <32 hex chars>-<2 hex chars>
+      (e.g. 1234567890ABCDEF1234567890ABCDEF-AB).
 
 - name: Get CrowdStrike OAuth2 token
   uri:
@@ -17,6 +20,7 @@
     body:
       client_id: "{{ cs_falcon_api_client_id }}"
       client_secret: "{{ cs_falcon_api_client_secret }}"
+      grant_type: client_credentials
     status_code: 201
   register: cs_oauth_response
   delegate_to: localhost
@@ -45,17 +49,35 @@
   run_once: true
   no_log: true
 
-- name: Check if Falcon Sensor service already exists
-  win_service:
-    name: CSFalconService
-  register: falcon_svc_check
-  failed_when: false
+- name: Compute SHA256 of downloaded Windows Falcon Sensor
+  stat:
+    path: /tmp/WindowsSensor.exe
+    checksum_algorithm: sha256
+  register: cs_installer_stat
+  delegate_to: localhost
+  run_once: true
+
+- name: Verify downloaded installer matches expected SHA256
+  assert:
+    that:
+      - cs_installer_stat.stat.checksum == cs_installer_meta.json.resources[0].sha256
+    fail_msg: >
+      Downloaded Falcon installer SHA256 ({{ cs_installer_stat.stat.checksum }})
+      does not match expected ({{ cs_installer_meta.json.resources[0].sha256 }}).
+      Delete /tmp/WindowsSensor.exe and re-run.
+  delegate_to: localhost
+  run_once: true
+
+- name: Check if Falcon Sensor is already installed
+  win_stat:
+    path: 'C:\Program Files\CrowdStrike\CSFalconService.exe'
+  register: falcon_installed
 
 - name: Copy Falcon Sensor installer to target
   win_copy:
     src: /tmp/WindowsSensor.exe
     dest: 'C:\Windows\Temp\WindowsSensor.exe'
-  when: falcon_svc_check.state is not defined
+  when: not falcon_installed.stat.exists
 
 - name: Install Falcon Sensor
   win_shell: |
@@ -65,7 +87,7 @@
         "CID={{ cs_falcon_cid }}" `
       -Wait -PassThru
     exit $result.ExitCode
-  when: falcon_svc_check.state is not defined
+  when: not falcon_installed.stat.exists
   no_log: true
   register: falcon_install_result
 
